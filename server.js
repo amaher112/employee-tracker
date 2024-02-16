@@ -13,14 +13,17 @@ const db = mysql.createConnection(
   console.log(`Connected to the employee_tracker database.`)
 );
 
-const queryDB = (sql, params = []) => {
+// Create function to call queries
+const queryDB = (sql, params = [], showResults) => {
   return new Promise((resolve, reject) => {
     db.query(sql, params, (err, results) => {
       if (err) {
         console.error("Error executing query:", err);
         reject(err);
       } else {
-        console.table(results);
+        if (showResults) {
+          console.table(results);
+        }
         resolve(results);
       }
     });
@@ -49,24 +52,22 @@ async function startApp() {
     switch (response.initial_prompt) {
       case "View all departments":
         const departmentSql = `SELECT * FROM department`;
-        await queryDB(departmentSql);
+        await queryDB(departmentSql, "", true);
         break;
       case "View all roles":
         const rolesSql = `SELECT roles.id, roles.title, department.name AS department, roles.salary
         FROM roles
         JOIN department ON roles.department_id = department.id`;
-        await queryDB(rolesSql);
+        await queryDB(rolesSql, "", true);
         break;
       case "View all employees":
         const employeeSql = `SELECT employee.id, employee.first_name, employee.last_name, department.name AS department, roles.salary, employee.manager_id AS manager
         FROM employee
         JOIN roles ON employee.roles_id = roles.id
         JOIN department ON roles.department_id = department.id`;
-        await queryDB(employeeSql);
+        await queryDB(employeeSql, "", true);
         break;
 
-      // If you select add a department, it takes you to a new prompt query asking the name of the dept
-      // Then it console logs "added X to the database"
       case "Add a department":
         const addDeptSql = `INSERT INTO department (name) VALUES (?)`;
         const departmentData = await inquirer.prompt([
@@ -77,7 +78,7 @@ async function startApp() {
           },
         ]);
         const deptParams = [departmentData.departmentName];
-        await queryDB(addDeptSql, deptParams);
+        await queryDB(addDeptSql, deptParams, false);
         console.log(`Added ${departmentData.departmentName} to the database.`);
         break;
 
@@ -110,18 +111,18 @@ async function startApp() {
           },
         ]);
 
-        await queryDB(addRolesSql, [
-          roleData.roleTitle,
-          roleData.roleSalary,
-          roleData.roleDepartment,
-        ]);
+        await queryDB(
+          addRolesSql,
+          [roleData.roleTitle, roleData.roleSalary, roleData.roleDepartment],
+          false
+        );
         console.log(`Added ${roleData.roleTitle} to the database.`);
         break;
-
-      // If you select add an employee, it asks for first name, last name, role, manager
-      // Consoles "added X, X to the database"
       case "Add an employee":
         const roleChoices = await queryDB("SELECT id, title FROM roles");
+        const managerChoices = await queryDB(
+          "SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM employee"
+        );
         const employeeData = await inquirer.prompt([
           {
             type: "input",
@@ -144,11 +145,23 @@ async function startApp() {
           },
           {
             type: "list",
-            name: "employeeManager",
-            message: "Who is the employee's manager?",
-            choices: [],
+            name: "employeeManagerId",
+            message: "Please choose the employee's manager:",
+            choices: managerChoices.map((manager) => ({
+              name: manager.name,
+              value: manager.id,
+            })),
           },
         ]);
+        const addEmployeeSql = `INSERT INTO employee (first_name, last_name, roles_id, manager_id) VALUES (?, ?, ?, ?)`;
+        const employeeParams = [
+          employeeData.employeeFirstName,
+          employeeData.employeeLastName,
+          employeeData.employeeRole,
+          employeeData.employeeManagerId,
+        ];
+        await queryDB(addEmployeeSql, employeeParams, false);
+        console.log(`Added ${employeeData.employeeFirstName} ${employeeData.employeeLastName} to the database.`);
         break;
 
       // If you select update employee, it asks which employee you want to update, then 'which role do you want to assign the selected employee?
