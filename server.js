@@ -1,7 +1,6 @@
 const mysql = require("mysql2");
 const inquirer = require("inquirer");
 require("dotenv").config();
-const queries = require('./db/queries.sql');
 
 // Connect to database
 const db = mysql.createConnection(
@@ -13,6 +12,20 @@ const db = mysql.createConnection(
   },
   console.log(`Connected to the employee_tracker database.`)
 );
+
+const queryDB = (sql, params = []) => {
+  return new Promise((resolve, reject) => {
+    db.query(sql, params, (err, results) => {
+      if (err) {
+        console.error("Error executing query:", err);
+        reject(err);
+      } else {
+        console.table(results);
+        resolve(results);
+      }
+    });
+  });
+};
 
 async function startApp() {
   while (true) {
@@ -35,15 +48,27 @@ async function startApp() {
 
     switch (response.initial_prompt) {
       case "View all departments":
-        await queries.departmentQuery();
+        const departmentSql = `SELECT * FROM department`;
+        await queryDB(departmentSql);
         break;
       case "View all roles":
-        // await some type of function
+        const rolesSql = `SELECT roles.id, roles.title, department.name AS department, roles.salary
+        FROM roles
+        JOIN department ON roles.department_id = department.id`;
+        await queryDB(rolesSql);
         break;
       case "View all employees":
-        // await some type of function
+        const employeeSql = `SELECT employee.id, employee.first_name, employee.last_name, department.name AS department, roles.salary, employee.manager_id AS manager
+        FROM employee
+        JOIN roles ON employee.roles_id = roles.id
+        JOIN department ON roles.department_id = department.id`;
+        await queryDB(employeeSql);
         break;
+
+      // If you select add a department, it takes you to a new prompt query asking the name of the dept
+      // Then it console logs "added X to the database"
       case "Add a department":
+        const addDeptSql = `INSERT INTO department (name) VALUES (?)`;
         const departmentData = await inquirer.prompt([
           {
             type: "input",
@@ -51,8 +76,18 @@ async function startApp() {
             message: "What is the name of the department?",
           },
         ]);
-      // await a function with departmentData.departmentName
+        const deptParams = [departmentData.departmentName];
+        await queryDB(addDeptSql, deptParams);
+        console.log(`Added ${departmentData.departmentName} to the database.`);
+        break;
+
+      // If you select add a role, it asks what is the name of the role? What is the salary, and which dept does it belong to (gives you a list of all depts)
+      // Console logs "X added to the database"
       case "Add a role":
+        const departmentChoices = await queryDB(
+          "SELECT id, name FROM department"
+        );
+        const addRolesSql = `INSERT INTO roles (title, salary, department_id) VALUES (?, ?, ?)`;
         const roleData = await inquirer.prompt([
           {
             type: "input",
@@ -68,13 +103,23 @@ async function startApp() {
             type: "list",
             name: "roleDepartment",
             message: "Which department does this role belong to?",
-            choices: [
-              // add departments
-            ],
+            choices: departmentChoices.map((department) => ({
+              name: department.name,
+              value: department.id,
+            })),
           },
         ]);
-        // await function to insert role with roleData.roleTitle, etc
+
+        await queryDB(addRolesSql, [
+          roleData.roleTitle,
+          roleData.roleSalary,
+          roleData.roleDepartment,
+        ]);
+        console.log(`Added ${roleData.roleTitle} to the database.`);
         break;
+
+      // If you select add an employee, it asks for first name, last name, role, manager
+      // Consoles "added X, X to the database"
       case "Add an employee":
         const roleChoices = await queryDB("SELECT id, title FROM roles");
         const employeeData = await inquirer.prompt([
@@ -104,18 +149,26 @@ async function startApp() {
             choices: [],
           },
         ]);
+        break;
+
+      // If you select update employee, it asks which employee you want to update, then 'which role do you want to assign the selected employee?
+      // Console logs "updated employees role"
+      case "Update an employee role":
+        const updatedEmployee = await inquirer.prompt([
+          {
+            type: "list",
+            name: "",
+          },
+        ]);
     }
   }
 }
 
-// If you select add a department, it takes you to a new prompt query asking the name of the dept
-// Then it console logs "added X to the database"
-
-// If you select add a role, it asks what is the name of the role? What is the salary, and which dept does it belong to (gives you a list of all depts)
-// Console logs "X added to the database"
-
-// If you select add an employee, it asks for first name, last name, role, manager
-// Consoles "added X, X to the database"
-
-// If you select update employee, it asks which employee you want to update, then 'which role do you want to assign the selected employee?
-// Console logs "updated employees role"
+db.connect((err) => {
+  if (err) {
+    console.error("Error connecting to MySQL:", err);
+    return;
+  }
+  console.log("Connected to MySQL");
+  startApp();
+});

@@ -8,7 +8,7 @@ FROM roles
 JOIN department ON roles.department_id = department.id;
 
 -- Query to view all employees (id, first and last name, dept, salary, manager)
-SELECT employee.id, employee.first_name, employee.last_name, department.name AS department, roles.salary, employee.manager_id AS manager
+SELECT employee.id, employee.first_name, employee.last_name, roles.title, department.name AS department, roles.salary, employee.manager_id AS manager
 FROM employee
-JOIN roles ON employee.roles_id = roles.department_id
+JOIN roles ON employee.roles_id = roles.id
 JOIN department ON roles.department_id = department.id
