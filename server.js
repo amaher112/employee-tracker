@@ -32,6 +32,7 @@ const queryDB = (sql, params = [], showResults) => {
 
 async function startApp() {
   while (true) {
+    // Initial prompt
     const response = await inquirer.prompt([
       {
         type: "list",
@@ -50,16 +51,21 @@ async function startApp() {
     ]);
 
     switch (response.initial_prompt) {
+      // Swith case to View All Departments
       case "View all departments":
         const departmentSql = `SELECT * FROM department`;
         await queryDB(departmentSql, "", true);
         break;
+
+        // Switch case to View All Roles
       case "View all roles":
         const rolesSql = `SELECT roles.id, roles.title, department.name AS department, roles.salary
         FROM roles
         JOIN department ON roles.department_id = department.id`;
         await queryDB(rolesSql, "", true);
         break;
+
+        // Switch case to View All Employees
       case "View all employees":
         const employeeSql = `SELECT employee.id, employee.first_name, employee.last_name, department.name AS department, roles.salary, employee.manager_id AS manager
         FROM employee
@@ -68,6 +74,7 @@ async function startApp() {
         await queryDB(employeeSql, "", true);
         break;
 
+        // Switch case to Add a Department
       case "Add a department":
         const addDeptSql = `INSERT INTO department (name) VALUES (?)`;
         const departmentData = await inquirer.prompt([
@@ -82,8 +89,7 @@ async function startApp() {
         console.log(`Added ${departmentData.departmentName} to the database.`);
         break;
 
-      // If you select add a role, it asks what is the name of the role? What is the salary, and which dept does it belong to (gives you a list of all depts)
-      // Console logs "X added to the database"
+      // Switch case to Add a Role
       case "Add a role":
         const departmentChoices = await queryDB(
           "SELECT id, name FROM department"
@@ -118,6 +124,8 @@ async function startApp() {
         );
         console.log(`Added ${roleData.roleTitle} to the database.`);
         break;
+
+        // Switch case to Add An Employee
       case "Add an employee":
         const roleChoices = await queryDB("SELECT id, title FROM roles");
         const managerChoices = await queryDB(
@@ -161,18 +169,51 @@ async function startApp() {
           employeeData.employeeManagerId,
         ];
         await queryDB(addEmployeeSql, employeeParams, false);
-        console.log(`Added ${employeeData.employeeFirstName} ${employeeData.employeeLastName} to the database.`);
+        console.log(
+          `Added ${employeeData.employeeFirstName} ${employeeData.employeeLastName} to the database.`
+        );
         break;
 
-      // If you select update employee, it asks which employee you want to update, then 'which role do you want to assign the selected employee?
-      // Console logs "updated employees role"
+        // Switch case to Update An Employee Role
       case "Update an employee role":
+        const updateRoleChoices = await queryDB("SELECT id, title FROM roles");
+        const employeeChoices = await queryDB(
+          "SELECT id, CONCAT(first_name, ' ', last_name) AS name FROM employee"
+        );
+
         const updatedEmployee = await inquirer.prompt([
           {
             type: "list",
-            name: "",
+            name: "employeeToUpdate",
+            message: "Which employee would you like to update?",
+            choices: employeeChoices.map((employee) => ({
+              name: employee.name,
+              value: employee.id,
+            })),
+          },
+          {
+            type: "list",
+            name: "newRole",
+            message:
+              "Which role do you want to assign to the selected employee?",
+            choices: updateRoleChoices.map((role) => ({
+              name: role.title,
+              value: role.id,
+            })),
           },
         ]);
+        const roleID = (
+          await queryDB("SELECT id FROM roles WHERE title = ?", [
+            updatedEmployee.newRole,
+          ])
+          // This right here!!
+        )[0].id;
+        const updateSql = "UPDATE employees SET role_id = ? WHERE id = ?";
+        const updateParams = [roleID, updatedEmployee.employeeToUpdate];
+
+        await queryDB(updateSql, updateParams, false);
+        console.log("Employee role updated successfully!");
+        break;
     }
   }
 }
@@ -185,3 +226,6 @@ db.connect((err) => {
   console.log("Connected to MySQL");
   startApp();
 });
+
+// Things to fix: manager's name instead of id when viewing all employees
+// Updating an employee
